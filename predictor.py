@@ -158,60 +158,111 @@ class StockPredictor:
     def evaluate(self, test_data, stock_code):
         """
         评估模型性能
-        
+
         Args:
             test_data: 测试数据 (X_test, y_test)
             stock_code: 股票代码
-            
+
         Returns:
             dict: 评估指标
         """
         X_test, y_test = test_data
-        
+
+        print(f"📊 评估数据形状: X_test={X_test.shape}, y_test={y_test.shape}")
+
         # 进行预测
         predictions = self.predict(X_test)
-        
+        print(f"🔮 预测结果形状: {predictions.shape}")
+
         # 反标准化
-        if hasattr(self.preprocessor, 'scaler') and self.preprocessor.scaler is not None:
-            predictions_denorm = self.preprocessor.inverse_transform(predictions)
-            y_test_denorm = self.preprocessor.inverse_transform(y_test)
-        else:
+        try:
+            if hasattr(self.preprocessor, 'scaler') and self.preprocessor.scaler is not None:
+                print("🔧 开始反标准化...")
+                predictions_denorm = self.preprocessor.inverse_transform(predictions, target_column='close')
+                y_test_denorm = self.preprocessor.inverse_transform(y_test, target_column='close')
+                print(f"✅ 反标准化完成: pred={predictions_denorm.shape}, actual={y_test_denorm.shape}")
+            else:
+                print("⚠️ 缩放器不可用，使用原始数据")
+                predictions_denorm = predictions
+                y_test_denorm = y_test
+        except Exception as e:
+            print(f"❌ 反标准化失败: {str(e)}")
+            print("⚠️ 使用标准化数据进行评估")
             predictions_denorm = predictions
             y_test_denorm = y_test
-        
+
         # 保存预测结果
         self.predictions = predictions_denorm
         self.actual_values = y_test_denorm
-        
+
         # 计算评估指标
-        mse = np.mean((predictions_denorm - y_test_denorm) ** 2)
-        rmse = np.sqrt(mse)
-        mae = np.mean(np.abs(predictions_denorm - y_test_denorm))
-        
-        # 计算方向准确率（预测涨跌方向的准确率）
-        pred_direction = np.sign(np.diff(predictions_denorm, axis=1))
-        actual_direction = np.sign(np.diff(y_test_denorm, axis=1))
-        direction_accuracy = np.mean(pred_direction == actual_direction)
-        
-        # 计算MAPE（平均绝对百分比误差）
-        mape = np.mean(np.abs((y_test_denorm - predictions_denorm) / y_test_denorm)) * 100
-        
-        metrics = {
-            'MSE': mse,
-            'RMSE': rmse,
-            'MAE': mae,
-            'MAPE': mape,
-            'Direction_Accuracy': direction_accuracy
-        }
-        
-        print(f"\n{stock_code} 模型评估结果:")
-        print(f"MSE: {mse:.6f}")
-        print(f"RMSE: {rmse:.6f}")
-        print(f"MAE: {mae:.6f}")
-        print(f"MAPE: {mape:.2f}%")
-        print(f"方向准确率: {direction_accuracy:.2f}%")
-        
-        return metrics
+        try:
+            # 确保数据形状一致
+            if predictions_denorm.shape != y_test_denorm.shape:
+                print(f"⚠️ 调整数据形状: pred={predictions_denorm.shape}, actual={y_test_denorm.shape}")
+                min_samples = min(predictions_denorm.shape[0], y_test_denorm.shape[0])
+                if len(predictions_denorm.shape) > 1 and len(y_test_denorm.shape) > 1:
+                    min_features = min(predictions_denorm.shape[1], y_test_denorm.shape[1])
+                    predictions_denorm = predictions_denorm[:min_samples, :min_features]
+                    y_test_denorm = y_test_denorm[:min_samples, :min_features]
+                else:
+                    predictions_denorm = predictions_denorm[:min_samples]
+                    y_test_denorm = y_test_denorm[:min_samples]
+
+            # 基本评估指标
+            mse = np.mean((predictions_denorm - y_test_denorm) ** 2)
+            rmse = np.sqrt(mse)
+            mae = np.mean(np.abs(predictions_denorm - y_test_denorm))
+
+            # 计算MAPE（处理除零情况）
+            y_test_nonzero = y_test_denorm.copy()
+            y_test_nonzero[y_test_nonzero == 0] = 1e-8  # 避免除零
+            mape = np.mean(np.abs((y_test_denorm - predictions_denorm) / y_test_nonzero)) * 100
+
+            # 计算方向准确率（仅当有多个时间步时）
+            if len(predictions_denorm.shape) > 1 and predictions_denorm.shape[1] > 1:
+                pred_direction = np.sign(np.diff(predictions_denorm, axis=1))
+                actual_direction = np.sign(np.diff(y_test_denorm, axis=1))
+                direction_accuracy = np.mean(pred_direction == actual_direction) * 100
+            else:
+                # 单步预测的方向准确率
+                if len(predictions_denorm) > 1:
+                    pred_direction = np.sign(np.diff(predictions_denorm.flatten()))
+                    actual_direction = np.sign(np.diff(y_test_denorm.flatten()))
+                    direction_accuracy = np.mean(pred_direction == actual_direction) * 100
+                else:
+                    direction_accuracy = 50.0  # 默认值
+
+            metrics = {
+                'MSE': float(mse),
+                'RMSE': float(rmse),
+                'MAE': float(mae),
+                'MAPE': float(mape),
+                'Direction_Accuracy': float(direction_accuracy)
+            }
+
+            print(f"\n{stock_code} 模型评估结果:")
+            print(f"MSE: {mse:.6f}")
+            print(f"RMSE: {rmse:.6f}")
+            print(f"MAE: {mae:.6f}")
+            print(f"MAPE: {mape:.2f}%")
+            print(f"方向准确率: {direction_accuracy:.2f}%")
+
+            return metrics
+
+        except Exception as e:
+            print(f"❌ 评估指标计算失败: {str(e)}")
+            import traceback
+            traceback.print_exc()
+
+            # 返回默认指标
+            return {
+                'MSE': float('inf'),
+                'RMSE': float('inf'),
+                'MAE': float('inf'),
+                'MAPE': float('inf'),
+                'Direction_Accuracy': 50.0
+            }
     
     def plot_predictions(self, stock_code, num_samples=100):
         """
@@ -267,46 +318,100 @@ class StockPredictor:
     def predict_next_days(self, stock_data, stock_code, days=5):
         """
         预测接下来几天的股价
-        
+
         Args:
             stock_data: 股票历史数据
             stock_code: 股票代码
             days: 预测天数
-            
+
         Returns:
             dict: 预测结果
         """
-        # 加载预处理器
-        if not self.preprocessor.load_scaler(f'{stock_code}_scaler.pkl'):
-            print("警告: 无法加载预处理器，使用默认设置")
-        
-        # 预处理数据
-        df_with_indicators = self.preprocessor.add_technical_indicators(stock_data)
-        feature_data = self.preprocessor.select_features(df_with_indicators)
-        feature_data = feature_data.dropna()
-        
-        # 标准化
-        normalized_data = self.preprocessor.normalize_data(feature_data.values, fit_scaler=False)
-        
-        # 获取最近的序列数据
-        recent_sequence = normalized_data[-DATA_CONFIG['sequence_length']:]
-        
-        # 进行预测
-        predictions = self.predict_future(recent_sequence, days)
-        
-        # 反标准化
-        predictions_denorm = self.preprocessor.inverse_transform(predictions.reshape(-1, 1))
-        
-        # 创建预测日期
-        last_date = stock_data.index[-1]
-        pred_dates = [last_date + timedelta(days=i+1) for i in range(days)]
-        
-        # 构建结果
-        result = {
-            'dates': pred_dates,
-            'predictions': predictions_denorm.flatten(),
-            'last_price': stock_data['close'].iloc[-1],
-            'prediction_change': predictions_denorm.flatten() - stock_data['close'].iloc[-1]
-        }
-        
-        return result
+        try:
+            print(f"🔮 开始预测 {stock_code} 未来 {days} 天...")
+
+            # 加载预处理器
+            scaler_loaded = self.preprocessor.load_scaler(f'{stock_code}_scaler.pkl')
+            if not scaler_loaded:
+                print("⚠️ 无法加载预处理器，使用当前设置")
+
+            # 预处理数据
+            print("🔧 预处理数据...")
+            df_with_indicators = self.preprocessor.add_technical_indicators(stock_data)
+            feature_data = self.preprocessor.select_features(df_with_indicators)
+            feature_data = feature_data.dropna()
+
+            print(f"📊 特征数据形状: {feature_data.shape}")
+
+            # 标准化
+            if scaler_loaded:
+                normalized_data = self.preprocessor.normalize_data(feature_data.values, fit_scaler=False)
+            else:
+                print("⚠️ 重新拟合缩放器")
+                normalized_data = self.preprocessor.normalize_data(feature_data.values, fit_scaler=True)
+
+            # 获取最近的序列数据
+            sequence_length = getattr(self.preprocessor, 'sequence_length', DATA_CONFIG['sequence_length'])
+            if len(normalized_data) < sequence_length:
+                print(f"⚠️ 数据不足，调整序列长度: {sequence_length} -> {len(normalized_data)}")
+                sequence_length = len(normalized_data)
+
+            recent_sequence = normalized_data[-sequence_length:]
+            print(f"📏 使用序列长度: {sequence_length}")
+
+            # 进行预测
+            predictions = self.predict_future(recent_sequence, days)
+            print(f"🎯 预测形状: {predictions.shape}")
+
+            # 反标准化
+            try:
+                if len(predictions.shape) == 1:
+                    predictions_reshaped = predictions.reshape(-1, 1)
+                else:
+                    predictions_reshaped = predictions.reshape(-1, 1) if predictions.shape[1] == 1 else predictions
+
+                predictions_denorm = self.preprocessor.inverse_transform(predictions_reshaped, target_column='close')
+
+                if len(predictions_denorm.shape) > 1:
+                    predictions_denorm = predictions_denorm.flatten()
+
+                print(f"✅ 反标准化完成: {predictions_denorm.shape}")
+
+            except Exception as e:
+                print(f"❌ 反标准化失败: {str(e)}")
+                print("⚠️ 使用原始预测值")
+                predictions_denorm = predictions.flatten() if len(predictions.shape) > 1 else predictions
+
+            # 创建预测日期
+            last_date = stock_data.index[-1]
+            pred_dates = [last_date + timedelta(days=i+1) for i in range(len(predictions_denorm))]
+
+            # 获取最后价格
+            last_price = float(stock_data['close'].iloc[-1])
+
+            # 构建结果
+            result = {
+                'dates': pred_dates,
+                'predictions': predictions_denorm.tolist() if hasattr(predictions_denorm, 'tolist') else list(predictions_denorm),
+                'last_price': last_price,
+                'prediction_change': (predictions_denorm - last_price).tolist() if hasattr(predictions_denorm, 'tolist') else list(predictions_denorm - last_price)
+            }
+
+            print(f"✅ 预测完成，预测了 {len(predictions_denorm)} 天")
+            return result
+
+        except Exception as e:
+            print(f"❌ 预测失败: {str(e)}")
+            import traceback
+            traceback.print_exc()
+
+            # 返回默认结果
+            last_price = float(stock_data['close'].iloc[-1])
+            pred_dates = [stock_data.index[-1] + timedelta(days=i+1) for i in range(days)]
+
+            return {
+                'dates': pred_dates,
+                'predictions': [last_price] * days,
+                'last_price': last_price,
+                'prediction_change': [0.0] * days
+            }

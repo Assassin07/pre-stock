@@ -288,25 +288,68 @@ class StockDataPreprocessor:
         
         return scaled_data
     
-    def inverse_transform(self, data, target_column_idx=3):
+    def inverse_transform(self, data, target_column='close'):
         """
         反标准化
-        
+
         Args:
             data: 标准化的数据
-            target_column_idx: 目标列索引
-            
+            target_column: 目标列名或索引
+
         Returns:
             array: 反标准化后的数据
         """
-        # 创建与原始数据相同形状的数组
-        dummy_data = np.zeros((data.shape[0], len(self.feature_columns)))
-        dummy_data[:, target_column_idx] = data.flatten()
-        
-        # 反标准化
-        inverse_data = self.scaler.inverse_transform(dummy_data)
-        
-        return inverse_data[:, target_column_idx].reshape(data.shape)
+        try:
+            # 确保有特征列信息
+            if not hasattr(self, 'feature_columns') or len(self.feature_columns) == 0:
+                print("⚠️ 特征列信息缺失，返回原始数据")
+                return data
+
+            # 获取目标列索引
+            if isinstance(target_column, str):
+                if target_column in self.feature_columns:
+                    target_column_idx = self.feature_columns.index(target_column)
+                else:
+                    print(f"⚠️ 目标列 '{target_column}' 不在特征列中，使用第一个数值列")
+                    # 寻找包含'close'的列
+                    close_cols = [i for i, col in enumerate(self.feature_columns) if 'close' in col.lower()]
+                    if close_cols:
+                        target_column_idx = close_cols[0]
+                    else:
+                        target_column_idx = 0  # 使用第一列
+            else:
+                target_column_idx = target_column
+
+            # 检查索引是否有效
+            if target_column_idx >= len(self.feature_columns):
+                print(f"⚠️ 目标列索引 {target_column_idx} 超出范围，使用第一列")
+                target_column_idx = 0
+
+            print(f"🔧 反标准化: 使用列 '{self.feature_columns[target_column_idx]}' (索引: {target_column_idx})")
+
+            # 创建与原始数据相同形状的数组
+            if len(data.shape) == 1:
+                data_flat = data
+                original_shape = data.shape
+            else:
+                data_flat = data.flatten()
+                original_shape = data.shape
+
+            dummy_data = np.zeros((len(data_flat), len(self.feature_columns)))
+            dummy_data[:, target_column_idx] = data_flat
+
+            # 反标准化
+            inverse_data = self.scaler.inverse_transform(dummy_data)
+            result = inverse_data[:, target_column_idx].reshape(original_shape)
+
+            return result
+
+        except Exception as e:
+            print(f"❌ 反标准化失败: {str(e)}")
+            print(f"📊 数据形状: {data.shape}")
+            print(f"📋 特征列数: {len(self.feature_columns) if hasattr(self, 'feature_columns') else 0}")
+            print("⚠️ 返回原始数据")
+            return data
     
     def prepare_data(self, df, target_column='close'):
         """

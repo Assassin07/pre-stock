@@ -184,45 +184,85 @@ def main():
 def quick_predict(stock_code, days=5):
     """
     快速预测函数（用于简单调用）
-    
+
     Args:
         stock_code: 股票代码
         days: 预测天数
     """
     print(f"🚀 快速预测 {stock_code} 未来 {days} 天走势")
-    
-    # 创建目录
-    create_directories()
-    
-    # 获取数据
-    fetcher = StockDataFetcher()
-    df = fetcher.fetch_stock_data(stock_code)
-    if df is None:
-        print("❌ 无法获取股票数据")
+
+    try:
+        # 创建目录
+        create_directories()
+
+        # 获取数据
+        fetcher = StockDataFetcher()
+        df = fetcher.fetch_stock_data(stock_code)
+        if df is None:
+            print("❌ 无法获取股票数据")
+            return None
+
+        print(f"✅ 获取到 {len(df)} 条数据")
+
+        # 预处理
+        preprocessor = StockDataPreprocessor()
+        train_data, val_data, test_data = preprocessor.prepare_data(df)
+        input_size = len(preprocessor.feature_columns)
+
+        # 检查实际输出维度
+        _, y_train = train_data
+        actual_output_size = y_train.shape[1] if len(y_train.shape) > 1 else 1
+
+        print(f"📊 特征数: {input_size}, 输出维度: {actual_output_size}")
+
+        # 保存预处理器
+        preprocessor.save_scaler(f'{stock_code}_scaler.pkl')
+
+        # 训练模型
+        trainer = StockTrainer('lstm', input_size, actual_output_size)
+
+        # 使用较少的训练轮数以加快速度
+        from config import TRAINING_CONFIG
+        original_epochs = TRAINING_CONFIG['num_epochs']
+        TRAINING_CONFIG['num_epochs'] = min(20, original_epochs)
+
+        try:
+            trainer.train(train_data, val_data, stock_code)
+            print("✅ 模型训练完成")
+        finally:
+            TRAINING_CONFIG['num_epochs'] = original_epochs
+
+        # 预测
+        predictor = StockPredictor('lstm', input_size, actual_output_size)
+        if not predictor.load_model(stock_code):
+            print("❌ 无法加载训练好的模型")
+            return None
+
+        predictor.preprocessor = preprocessor
+
+        # 预测未来
+        future_prediction = predictor.predict_next_days(df, stock_code, min(days, actual_output_size))
+
+        if future_prediction:
+            # 显示结果
+            print("\n📈 预测结果:")
+            for i, (date, price) in enumerate(zip(future_prediction['dates'], future_prediction['predictions'])):
+                change = future_prediction['prediction_change'][i]
+                change_pct = change / future_prediction['last_price'] * 100
+                direction = "📈" if change > 0 else "📉" if change < 0 else "➡️"
+                print(f"第{i+1}天 ({date.strftime('%Y-%m-%d')}): "
+                      f"{price:.2f} ({change:+.2f}, {change_pct:+.2f}%) {direction}")
+
+            return future_prediction
+        else:
+            print("❌ 预测失败")
+            return None
+
+    except Exception as e:
+        print(f"❌ 快速预测失败: {str(e)}")
+        import traceback
+        traceback.print_exc()
         return None
-    
-    # 预处理
-    preprocessor = StockDataPreprocessor()
-    train_data, val_data, test_data = preprocessor.prepare_data(df)
-    input_size = len(preprocessor.feature_columns)
-    
-    # 训练模型
-    trainer = StockTrainer('lstm', input_size, days)
-    trainer.train(train_data, val_data, stock_code)
-    
-    # 预测
-    predictor = StockPredictor('lstm', input_size, days)
-    predictor.load_model(stock_code)
-    predictor.preprocessor = preprocessor
-    
-    future_prediction = predictor.predict_next_days(df, stock_code, days)
-    
-    # 显示结果
-    print("\n预测结果:")
-    for i, (date, price) in enumerate(zip(future_prediction['dates'], future_prediction['predictions'])):
-        print(f"第{i+1}天 ({date.strftime('%Y-%m-%d')}): {price:.2f}")
-    
-    return future_prediction
 
 
 if __name__ == "__main__":
