@@ -231,13 +231,54 @@ files.download('results.zip')
 3. **分批处理**: 批量预测时建议每次处理3-5只股票
 4. **及时保存**: 重要结果及时下载保存
 
-## 📦 本地安装依赖
+## 📦 安装依赖
 
-如果在本地运行：
+### 智能安装（推荐）
 
+```bash
+# 使用智能安装脚本，自动处理不同环境的兼容性问题
+python install_dependencies.py
+```
+
+### 手动安装
+
+如果遇到 `talib-binary` 安装问题，请按以下顺序尝试：
+
+#### 方法1：使用 ta 库（推荐）
+```bash
+pip install torch numpy pandas matplotlib plotly seaborn scikit-learn akshare tqdm joblib
+pip install ta  # 纯Python实现，兼容性最好
+```
+
+#### 方法2：Windows用户
+```bash
+pip install talib-binary  # Windows预编译版本
+```
+
+#### 方法3：macOS用户
+```bash
+brew install ta-lib  # 先安装系统依赖
+pip install TA-Lib
+```
+
+#### 方法4：Linux用户
+```bash
+sudo apt-get install libta-dev  # Ubuntu/Debian
+# 或
+sudo yum install ta-lib-devel   # CentOS/RHEL
+pip install TA-Lib
+```
+
+#### 方法5：使用requirements.txt
 ```bash
 pip install -r requirements.txt
 ```
+
+### 🚨 安装问题解决
+
+如果遇到安装问题，请查看 [COLAB_INSTALL_GUIDE.md](COLAB_INSTALL_GUIDE.md) 获取详细的解决方案。
+
+**重要提示**：即使技术指标库安装失败，系统仍然可以正常运行，会自动使用简化版的技术指标计算。
 
 ## 🎯 快速开始
 
