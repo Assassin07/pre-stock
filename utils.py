@@ -31,9 +31,26 @@ def setup_logging(log_level=logging.INFO):
 
 def create_directories():
     """创建必要的目录"""
-    for path in PATHS.values():
-        os.makedirs(path, exist_ok=True)
-    print("目录结构已创建")
+    print("📁 创建项目目录结构...")
+
+    for name, path in PATHS.items():
+        try:
+            os.makedirs(path, exist_ok=True)
+            if os.path.exists(path):
+                print(f"✅ {name}: {path}")
+            else:
+                print(f"❌ {name}: {path} - 创建失败")
+        except Exception as e:
+            print(f"❌ 创建目录失败 {path}: {str(e)}")
+            # 尝试使用绝对路径
+            try:
+                abs_path = os.path.abspath(path)
+                os.makedirs(abs_path, exist_ok=True)
+                print(f"🔧 使用绝对路径创建: {abs_path}")
+            except Exception as e2:
+                print(f"❌ 绝对路径也失败: {str(e2)}")
+
+    print("📋 目录检查完成")
 
 
 def save_json(data, filename, directory=None):
