@@ -22,28 +22,69 @@ def check_colab_environment():
 def install_dependencies():
     """安装必要的依赖包"""
     print("📦 开始安装依赖包...")
-    
-    packages = [
+
+    # 基础包列表（不包含可能有问题的包）
+    basic_packages = [
         'akshare',
-        'talib-binary', 
         'plotly',
         'seaborn',
         'tqdm',
         'joblib',
         'scikit-learn'
     ]
-    
-    for package in packages:
+
+    failed_packages = []
+
+    for package in basic_packages:
         try:
             print(f"📥 安装 {package}...")
             subprocess.check_call([sys.executable, '-m', 'pip', 'install', '-q', package])
             print(f"✅ {package} 安装成功")
         except subprocess.CalledProcessError as e:
             print(f"❌ {package} 安装失败: {e}")
-            return False
-    
-    print("🎉 所有依赖包安装完成！")
-    return True
+            failed_packages.append(package)
+
+    # 智能安装技术指标库
+    print("\n🔧 安装技术指标库...")
+    talib_success = install_talib_smart()
+
+    if failed_packages:
+        print(f"⚠️ {len(failed_packages)} 个包安装失败，但系统仍可运行")
+        return False
+    elif not talib_success:
+        print("⚠️ 技术指标库安装失败，将使用简化版本")
+        return True
+    else:
+        print("🎉 所有依赖包安装完成！")
+        return True
+
+def install_talib_smart():
+    """智能安装技术指标库"""
+    # 首先尝试ta库（纯Python实现，兼容性最好）
+    try:
+        print("📥 尝试安装 ta 库...")
+        subprocess.check_call([sys.executable, '-m', 'pip', 'install', '-q', 'ta'])
+        print("✅ ta 库安装成功")
+        return True
+    except subprocess.CalledProcessError:
+        print("❌ ta 库安装失败")
+
+    # 如果在Colab环境，尝试安装TA-Lib
+    if check_colab_environment():
+        try:
+            print("📥 在Colab中尝试安装 TA-Lib...")
+            # 先安装系统依赖
+            subprocess.check_call(['apt-get', 'update'], stdout=subprocess.DEVNULL)
+            subprocess.check_call(['apt-get', 'install', '-y', 'libta-dev'], stdout=subprocess.DEVNULL)
+            # 再安装Python包
+            subprocess.check_call([sys.executable, '-m', 'pip', 'install', '-q', 'TA-Lib'])
+            print("✅ TA-Lib 安装成功")
+            return True
+        except subprocess.CalledProcessError:
+            print("❌ TA-Lib 安装失败")
+
+    print("⚠️ 技术指标库安装失败，将使用简化版本")
+    return False
 
 def check_gpu():
     """检查GPU可用性"""

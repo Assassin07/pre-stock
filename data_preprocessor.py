@@ -4,12 +4,27 @@
 
 import pandas as pd
 import numpy as np
-import talib
 from sklearn.preprocessing import MinMaxScaler
 from sklearn.model_selection import train_test_split
 import joblib
 import os
 from config import DATA_CONFIG, PATHS
+
+# 尝试导入技术指标库，按优先级顺序
+TALIB_AVAILABLE = False
+TA_AVAILABLE = False
+
+try:
+    import talib
+    TALIB_AVAILABLE = True
+    print("✅ 使用 TA-Lib 库计算技术指标")
+except ImportError:
+    try:
+        import ta
+        TA_AVAILABLE = True
+        print("✅ 使用 ta 库计算技术指标")
+    except ImportError:
+        print("⚠️ 未安装技术指标库，将使用简化版本")
 
 
 class StockDataPreprocessor:
@@ -23,57 +38,166 @@ class StockDataPreprocessor:
     def add_technical_indicators(self, df):
         """
         添加技术指标
-        
+
         Args:
             df: 原始股票数据
-            
+
         Returns:
             DataFrame: 添加技术指标后的数据
         """
         df = df.copy()
-        
+
+        if TALIB_AVAILABLE:
+            return self._add_indicators_talib(df)
+        elif TA_AVAILABLE:
+            return self._add_indicators_ta(df)
+        else:
+            return self._add_indicators_simple(df)
+
+    def _add_indicators_talib(self, df):
+        """使用TA-Lib库添加技术指标"""
         # 基础价格数据
         high = df['high'].values
         low = df['low'].values
         close = df['close'].values
         volume = df['volume'].values
         open_price = df['open'].values
-        
+
         # 移动平均线
         df['ma5'] = talib.SMA(close, timeperiod=5)
         df['ma10'] = talib.SMA(close, timeperiod=10)
         df['ma20'] = talib.SMA(close, timeperiod=20)
         df['ma60'] = talib.SMA(close, timeperiod=60)
-        
+
         # 指数移动平均线
         df['ema12'] = talib.EMA(close, timeperiod=12)
         df['ema26'] = talib.EMA(close, timeperiod=26)
-        
+
         # MACD
         df['macd'], df['macd_signal'], df['macd_hist'] = talib.MACD(close)
-        
+
         # RSI
         df['rsi'] = talib.RSI(close, timeperiod=14)
-        
+
         # 布林带
         df['bb_upper'], df['bb_middle'], df['bb_lower'] = talib.BBANDS(close, timeperiod=20)
-        
+
         # KDJ指标
         df['k'], df['d'] = talib.STOCH(high, low, close)
         df['j'] = 3 * df['k'] - 2 * df['d']
-        
+
         # 威廉指标
         df['wr'] = talib.WILLR(high, low, close, timeperiod=14)
-        
+
         # 成交量指标
         df['volume_ma5'] = talib.SMA(volume.astype(float), timeperiod=5)
         df['volume_ratio'] = df['volume'] / df['volume_ma5']
-        
+
         # 价格变化率
         df['price_change'] = df['close'].pct_change()
         df['high_low_ratio'] = (df['high'] - df['low']) / df['close']
         df['open_close_ratio'] = (df['close'] - df['open']) / df['open']
-        
+
+        return df
+
+    def _add_indicators_ta(self, df):
+        """使用ta库添加技术指标"""
+        # 移动平均线
+        df['ma5'] = ta.trend.sma_indicator(df['close'], window=5)
+        df['ma10'] = ta.trend.sma_indicator(df['close'], window=10)
+        df['ma20'] = ta.trend.sma_indicator(df['close'], window=20)
+        df['ma60'] = ta.trend.sma_indicator(df['close'], window=60)
+
+        # 指数移动平均线
+        df['ema12'] = ta.trend.ema_indicator(df['close'], window=12)
+        df['ema26'] = ta.trend.ema_indicator(df['close'], window=26)
+
+        # MACD
+        df['macd'] = ta.trend.macd_diff(df['close'])
+        df['macd_signal'] = ta.trend.macd_signal(df['close'])
+        df['macd_hist'] = df['macd'] - df['macd_signal']
+
+        # RSI
+        df['rsi'] = ta.momentum.rsi(df['close'], window=14)
+
+        # 布林带
+        bb = ta.volatility.BollingerBands(df['close'], window=20)
+        df['bb_upper'] = bb.bollinger_hband()
+        df['bb_middle'] = bb.bollinger_mavg()
+        df['bb_lower'] = bb.bollinger_lband()
+
+        # KDJ指标
+        stoch = ta.momentum.StochasticOscillator(df['high'], df['low'], df['close'])
+        df['k'] = stoch.stoch()
+        df['d'] = stoch.stoch_signal()
+        df['j'] = 3 * df['k'] - 2 * df['d']
+
+        # 威廉指标
+        df['wr'] = ta.momentum.williams_r(df['high'], df['low'], df['close'], lbp=14)
+
+        # 成交量指标
+        df['volume_ma5'] = ta.trend.sma_indicator(df['volume'], window=5)
+        df['volume_ratio'] = df['volume'] / df['volume_ma5']
+
+        # 价格变化率
+        df['price_change'] = df['close'].pct_change()
+        df['high_low_ratio'] = (df['high'] - df['low']) / df['close']
+        df['open_close_ratio'] = (df['close'] - df['open']) / df['open']
+
+        return df
+
+    def _add_indicators_simple(self, df):
+        """使用简化版本添加技术指标（不依赖外部库）"""
+        print("⚠️ 使用简化版技术指标计算")
+
+        # 移动平均线
+        df['ma5'] = df['close'].rolling(window=5).mean()
+        df['ma10'] = df['close'].rolling(window=10).mean()
+        df['ma20'] = df['close'].rolling(window=20).mean()
+        df['ma60'] = df['close'].rolling(window=60).mean()
+
+        # 指数移动平均线
+        df['ema12'] = df['close'].ewm(span=12).mean()
+        df['ema26'] = df['close'].ewm(span=26).mean()
+
+        # 简化MACD
+        df['macd'] = df['ema12'] - df['ema26']
+        df['macd_signal'] = df['macd'].ewm(span=9).mean()
+        df['macd_hist'] = df['macd'] - df['macd_signal']
+
+        # 简化RSI
+        delta = df['close'].diff()
+        gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
+        loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
+        rs = gain / loss
+        df['rsi'] = 100 - (100 / (1 + rs))
+
+        # 简化布林带
+        df['bb_middle'] = df['close'].rolling(window=20).mean()
+        bb_std = df['close'].rolling(window=20).std()
+        df['bb_upper'] = df['bb_middle'] + (bb_std * 2)
+        df['bb_lower'] = df['bb_middle'] - (bb_std * 2)
+
+        # 简化KDJ
+        low_min = df['low'].rolling(window=9).min()
+        high_max = df['high'].rolling(window=9).max()
+        rsv = (df['close'] - low_min) / (high_max - low_min) * 100
+        df['k'] = rsv.ewm(com=2).mean()
+        df['d'] = df['k'].ewm(com=2).mean()
+        df['j'] = 3 * df['k'] - 2 * df['d']
+
+        # 简化威廉指标
+        df['wr'] = (high_max - df['close']) / (high_max - low_min) * -100
+
+        # 成交量指标
+        df['volume_ma5'] = df['volume'].rolling(window=5).mean()
+        df['volume_ratio'] = df['volume'] / df['volume_ma5']
+
+        # 价格变化率
+        df['price_change'] = df['close'].pct_change()
+        df['high_low_ratio'] = (df['high'] - df['low']) / df['close']
+        df['open_close_ratio'] = (df['close'] - df['open']) / df['open']
+
         return df
     
     def select_features(self, df):
