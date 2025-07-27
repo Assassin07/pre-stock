@@ -71,25 +71,45 @@ def test_technical_indicators():
 def test_stock_data_fetch():
     """测试股票数据获取"""
     print("\n📊 测试股票数据获取...")
-    
+
     try:
         from data_fetcher import StockDataFetcher
-        
+
         fetcher = StockDataFetcher()
-        
-        # 测试获取少量数据
+
+        # 测试获取少量数据，使用更短的时间范围
+        print("🔍 尝试获取股票数据...")
         df = fetcher.fetch_stock_data('000001', start_date='2023-01-01', end_date='2023-01-31')
-        
+
         if df is not None and len(df) > 0:
             print(f"✅ 股票数据获取成功，共 {len(df)} 条记录")
-            print(f"📅 数据时间范围: {df.index[0]} 到 {df.index[-1]}")
+            print(f"📅 数据时间范围: {df.index[0].date()} 到 {df.index[-1].date()}")
+            print(f"📊 数据列: {list(df.columns)}")
+
+            # 检查数据质量
+            required_cols = ['open', 'high', 'low', 'close', 'volume']
+            missing_cols = [col for col in required_cols if col not in df.columns]
+            if missing_cols:
+                print(f"⚠️ 缺少列: {missing_cols}")
+            else:
+                print("✅ 数据格式正确")
+
+            # 检查是否有NaN值
+            nan_count = df[required_cols].isnull().sum().sum()
+            if nan_count > 0:
+                print(f"⚠️ 发现 {nan_count} 个NaN值")
+            else:
+                print("✅ 数据完整")
+
             return True
         else:
             print("❌ 股票数据获取失败")
             return False
-            
+
     except Exception as e:
         print(f"❌ 股票数据获取测试失败: {str(e)}")
+        import traceback
+        traceback.print_exc()
         return False
 
 
