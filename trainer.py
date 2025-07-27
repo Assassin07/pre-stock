@@ -83,64 +83,91 @@ class StockTrainer:
     def train_epoch(self, train_loader):
         """
         训练一个epoch
-        
+
         Args:
             train_loader: 训练数据加载器
-            
+
         Returns:
             float: 平均训练损失
         """
         self.model.train()
         total_loss = 0.0
         num_batches = 0
-        
+
         for batch_X, batch_y in tqdm(train_loader, desc="训练中"):
             batch_X = batch_X.to(self.device)
             batch_y = batch_y.to(self.device)
-            
+
+            # 检查和调整张量维度
+            if len(batch_y.shape) == 1:
+                batch_y = batch_y.unsqueeze(1)  # 添加维度 [batch_size] -> [batch_size, 1]
+
             # 前向传播
             self.optimizer.zero_grad()
             outputs = self.model(batch_X)
+
+            # 确保输出和目标维度匹配
+            if outputs.shape != batch_y.shape:
+                print(f"⚠️ 维度不匹配: outputs={outputs.shape}, targets={batch_y.shape}")
+                # 如果输出维度大于目标维度，截取
+                if outputs.shape[1] > batch_y.shape[1]:
+                    outputs = outputs[:, :batch_y.shape[1]]
+                # 如果目标维度大于输出维度，截取目标
+                elif batch_y.shape[1] > outputs.shape[1]:
+                    batch_y = batch_y[:, :outputs.shape[1]]
+
             loss = self.criterion(outputs, batch_y)
-            
+
             # 反向传播
             loss.backward()
-            
+
             # 梯度裁剪
             torch.nn.utils.clip_grad_norm_(self.model.parameters(), max_norm=1.0)
-            
+
             self.optimizer.step()
-            
+
             total_loss += loss.item()
             num_batches += 1
-        
+
         return total_loss / num_batches
     
     def validate_epoch(self, val_loader):
         """
         验证一个epoch
-        
+
         Args:
             val_loader: 验证数据加载器
-            
+
         Returns:
             float: 平均验证损失
         """
         self.model.eval()
         total_loss = 0.0
         num_batches = 0
-        
+
         with torch.no_grad():
             for batch_X, batch_y in val_loader:
                 batch_X = batch_X.to(self.device)
                 batch_y = batch_y.to(self.device)
-                
+
+                # 检查和调整张量维度
+                if len(batch_y.shape) == 1:
+                    batch_y = batch_y.unsqueeze(1)
+
                 outputs = self.model(batch_X)
+
+                # 确保输出和目标维度匹配
+                if outputs.shape != batch_y.shape:
+                    if outputs.shape[1] > batch_y.shape[1]:
+                        outputs = outputs[:, :batch_y.shape[1]]
+                    elif batch_y.shape[1] > outputs.shape[1]:
+                        batch_y = batch_y[:, :outputs.shape[1]]
+
                 loss = self.criterion(outputs, batch_y)
-                
+
                 total_loss += loss.item()
                 num_batches += 1
-        
+
         return total_loss / num_batches
     
     def train(self, train_data, val_data, stock_code):

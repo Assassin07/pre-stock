@@ -230,31 +230,45 @@ class StockDataPreprocessor:
     def create_sequences(self, data, target_column='close'):
         """
         创建时间序列数据
-        
+
         Args:
             data: 特征数据
             target_column: 目标列名
-            
+
         Returns:
             tuple: (X, y) 序列数据和目标数据
         """
         X, y = [], []
-        
+
         # 获取目标列的索引
         if target_column in data.columns:
             target_idx = data.columns.get_loc(target_column)
         else:
             target_idx = 3  # 默认使用close列
-        
+
+        print(f"📊 创建序列数据: 序列长度={self.sequence_length}, 预测天数={self.prediction_days}")
+        print(f"🎯 目标列: {target_column} (索引: {target_idx})")
+
         for i in range(self.sequence_length, len(data) - self.prediction_days + 1):
             # 输入序列
             X.append(data.iloc[i-self.sequence_length:i].values)
-            
+
             # 目标值（未来几天的收盘价）
-            future_prices = data.iloc[i:i+self.prediction_days, target_idx].values
-            y.append(future_prices)
-        
-        return np.array(X), np.array(y)
+            if self.prediction_days == 1:
+                # 如果只预测1天，返回标量值
+                future_price = data.iloc[i, target_idx]
+                y.append([future_price])  # 包装成列表以保持一致性
+            else:
+                # 预测多天
+                future_prices = data.iloc[i:i+self.prediction_days, target_idx].values
+                y.append(future_prices)
+
+        X = np.array(X)
+        y = np.array(y)
+
+        print(f"✅ 序列数据创建完成: X.shape={X.shape}, y.shape={y.shape}")
+
+        return X, y
     
     def normalize_data(self, data, fit_scaler=True):
         """
