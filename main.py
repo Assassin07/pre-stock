@@ -92,11 +92,24 @@ def main():
         # 4. 模型训练
         if args.mode in ['train', 'both']:
             print(f"\n🤖 步骤4: 训练{args.model_type.upper()}模型")
-            trainer = StockTrainer(args.model_type, input_size, args.days)
-            
+
+            # 检查数据维度
+            X_train, y_train = train_data
+            print(f"📊 训练数据维度: X={X_train.shape}, y={y_train.shape}")
+
+            # 确保输出维度与预测天数匹配
+            actual_output_size = y_train.shape[1] if len(y_train.shape) > 1 else 1
+            if actual_output_size != args.days:
+                print(f"⚠️ 调整输出维度: {args.days} -> {actual_output_size}")
+                output_size = actual_output_size
+            else:
+                output_size = args.days
+
+            trainer = StockTrainer(args.model_type, input_size, output_size)
+
             # 训练模型
             train_losses, val_losses = trainer.train(train_data, val_data, args.stock_code)
-            
+
             # 绘制训练历史
             trainer.plot_training_history(args.stock_code)
             print("✅ 模型训练完成")
@@ -104,13 +117,23 @@ def main():
         # 5. 模型预测和评估
         if args.mode in ['predict', 'both']:
             print(f"\n🔮 步骤5: 模型预测")
-            predictor = StockPredictor(args.model_type, input_size, args.days)
-            
+
+            # 使用与训练时相同的输出维度
+            if args.mode == 'both':
+                # 如果是both模式，使用训练时确定的维度
+                prediction_output_size = output_size
+            else:
+                # 如果是单独预测模式，需要从数据中推断
+                _, y_test = test_data
+                prediction_output_size = y_test.shape[1] if len(y_test.shape) > 1 else 1
+
+            predictor = StockPredictor(args.model_type, input_size, prediction_output_size)
+
             # 加载训练好的模型
             if not predictor.load_model(args.stock_code):
                 print("❌ 无法加载训练好的模型，请先运行训练模式")
                 return
-            
+
             # 加载预处理器
             predictor.preprocessor.load_scaler(f'{args.stock_code}_scaler.pkl')
             
